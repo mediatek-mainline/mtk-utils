@@ -750,10 +750,45 @@ class UsbDl:
         time.sleep(0.001)
         self.cmd_write32(self.soc['toprgu'][0] + 0x14, [0x1209])
 
+    def memory_dump(self):
+        # Dump efuses to file.
+        print("Dumping efuses...")
+        efuses = self.memory_read(self.soc['efusec'][0], self.soc['efusec'][1])
+        efuse_file = open("{}-efuses.bin".format(self.soc['name'].lower()), 'wb')
+        efuse_file.write(efuses)
+        efuse_file.close()
+
+        # Dump BROM.
+        print("Dumping BROM...")
+        brom = self.memory_read(self.soc['brom'][0], self.soc['brom'][1], cqdma=use_cqdma, print_speed=True)
+        if len(brom) != self.soc['brom'][1]:
+            print("Error: Failed to dump entire BROM.")
+            sys.exit(1)
+
+        brom_file = open("{}-brom.bin".format(self.soc['name'].lower()), 'wb')
+        brom_file.write(brom)
+        brom_file.close()
+
+        # Dump SRAM.
+        print("Dumping SRAM...")
+        sram = self.memory_read(self.soc['sram'][0], self.soc['sram'][1], cqdma=use_cqdma, print_speed=True)
+        sram_file = open("{}-sram.bin".format(self.soc['name'].lower()), 'wb')
+        sram_file.write(sram)
+        sram_file.close()
+
+        # Dump L2 SRAM.
+        print("Dumping L2 SRAM...")
+        l2_sram = self.memory_read(self.soc['l2_sram'][0], self.soc['l2_sram'][1], cqdma=use_cqdma, print_speed=True)
+        l2_sram_file = open("{}-l2-sram.bin".format(self.soc['name'].lower()), 'wb')
+        l2_sram_file.write(l2_sram)
+        l2_sram_file.close()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('port', type=str, help="The serial port you want to connect to.")
+    parser.add_argument('payload', type=str, help="The binary you want to load.")
+    parser.add_argument( '--mem_dump', type=bool, default=0, help="Dump sram, efuses...")
+    parser.add_argument( '-a', '--arch', type=str, default="armv7", help="Payload arch.")
     args = parser.parse_args()
 
     try:
@@ -769,12 +804,7 @@ if __name__ == "__main__":
     print("Disabling WDT...")
     usbdl.cmd_write32(usbdl.soc['toprgu'][0], [0x22000000])
 
-    # Dump efuses to file.
-    print("Dumping efuses...")
-    efuses = usbdl.memory_read(usbdl.soc['efusec'][0], usbdl.soc['efusec'][1])
-    efuse_file = open("{}-efuses.bin".format(usbdl.soc['name'].lower()), 'wb')
-    efuse_file.write(efuses)
-    efuse_file.close()
+
 
     # Print a string to UART0.
     for byte in "Hello, there!\r\n".encode('utf-8'):
@@ -805,40 +835,19 @@ if __name__ == "__main__":
     # again and dump the next chunk until you've dumped the memory you're
     # interested in.
 
-    # Dump BROM.
-    print("Dumping BROM...")
-    brom = usbdl.memory_read(usbdl.soc['brom'][0], usbdl.soc['brom'][1], cqdma=use_cqdma, print_speed=True)
-    if len(brom) != usbdl.soc['brom'][1]:
-        print("Error: Failed to dump entire BROM.")
-        sys.exit(1)
-
-    brom_file = open("{}-brom.bin".format(usbdl.soc['name'].lower()), 'wb')
-    brom_file.write(brom)
-    brom_file.close()
-
-    # Dump SRAM.
-    print("Dumping SRAM...")
-    sram = usbdl.memory_read(usbdl.soc['sram'][0], usbdl.soc['sram'][1], cqdma=use_cqdma, print_speed=True)
-    sram_file = open("{}-sram.bin".format(usbdl.soc['name'].lower()), 'wb')
-    sram_file.write(sram)
-    sram_file.close()
-
-    # Dump L2 SRAM.
-    print("Dumping L2 SRAM...")
-    l2_sram = usbdl.memory_read(usbdl.soc['l2_sram'][0], usbdl.soc['l2_sram'][1], cqdma=use_cqdma, print_speed=True)
-    l2_sram_file = open("{}-l2-sram.bin".format(usbdl.soc['name'].lower()), 'wb')
-    l2_sram_file.write(l2_sram)
-    l2_sram_file.close()
+    if args.mem_dump:
+        usbdl.memory_dump()
 
     # Code parameters.
-    binary = open("demo/mode-switch/mode-switch.bin", 'rb').read()
-    load_addr = 0x00200000
+    #binary = open("demo/mode-switch/mode-switch.bin", 'rb').read()
+    load_addr = 0x00201000
     thumb_mode = False
 
-    # Load executable.
+    # Load executabwdt_resetle.
     print("Loading executables...")
-    usbdl.memory_write(load_addr, binary, cqdma=use_cqdma, print_speed=True)
-    usbdl.memory_write(0x00201000, open("demo/hello-aarch64/hello-aarch64.bin", 'rb').read(), cqdma=use_cqdma, print_speed=True)
+    #usbdl.memory_write(load_addr, binary, cqdma=use_cqdma, print_speed=True)
+    #usbdl.memory_write(0x00201000, open("demo/hello-aarch64/hello-aarch64.bin", 'rb').read(), cqdma=use_cqdma, print_speed=True)
+    usbdl.memory_write(0x00201000, open(args.payload, 'rb').read(), cqdma=use_cqdma, print_speed=True)
 
     # Mark DA as verified.
     if usbdl.soc.get('brom_g_da_verified', False):
@@ -851,7 +860,11 @@ if __name__ == "__main__":
         sys.exit(1)
 
     # Jump to executable.
-    print("Jumping to executable...")
     if thumb_mode:
         load_addr |= 1
-    usbdl.cmd_jump_da(load_addr)
+    if args.arch=="aarch64":
+	    print("Jumping to executable64...")
+	    usbdl.cmd_jump_da_64(load_addr)
+    else:
+	    print("Jumping to executable32...")
+	    usbdl.cmd_jump_da(load_addr)
