@@ -6,6 +6,7 @@ import serial
 import struct
 import sys
 import time
+import os
 
 
 def auto_int(i):
@@ -790,6 +791,9 @@ if __name__ == "__main__":
     parser.add_argument( '--mem_dump', type=bool, default=0, help="Dump sram, efuses...")
     parser.add_argument( '-a', '--arch', type=str, default="armv7", help="Payload arch.")
     args = parser.parse_args()
+
+    if not os.path.exists(args.port):
+        os.system(f'handshake/handshake {args.port}')
 
     try:
         usbdl = UsbDl(args.port, debug=False)
